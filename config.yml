@@ -1,0 +1,7 @@
+wazo:
+  host: 
+  port: 
+  username: 
+  password: 
+  backend: wazo_user
+  application_uuid: 
