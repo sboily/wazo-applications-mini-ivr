@@ -1,27 +1,28 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import websocket
-import json
 import logging
-import urllib3
-
-from Queue import Queue
-from threading import Thread
+import yaml
+from queue import Queue
+from concurrent.futures import ThreadPoolExecutor
 
 from xivo_auth_client import Client as Auth
 from xivo_ctid_ng_client import Client as CtidNg
-from xivo_confd_client import Client as Confd
-
-urllib3.disable_warnings()
-logging.basicConfig()
-logging.captureWarnings(True)
+from wazo_websocketd_client import Client as Websocketd
 
 
 message_queue = Queue()
 
 
-class callbacksHandler:
+class Message:
+    def __init__(self, name):
+        self.name = name
+
+    def message(self, data):
+        message_queue.put({'name': self.name, 'data': data})
+
+
+class CallbacksHandler:
     def __init__(self):
         self.callbacks = dict()
 
@@ -41,7 +42,9 @@ class callbacksHandler:
 
 
 class Wazo:
-    def __init__(self, config, events):
+    def __init__(self, config_file, events):
+        config = self._get_config(config_file)
+        self.events = events
         self.host = config['wazo']['host']
         self.username = config['wazo']['username']
         self.password = config['wazo']['password']
@@ -50,21 +53,15 @@ class Wazo:
         self.application_uuid = config['wazo']['application_uuid']
         self.expiration = 3600
         self.token = None
-        self.user_uuid = None
         self.call_control = None
-        self.confd = None
-        self.events = events
-        self.callbacksHandler = callbacksHandler()
+        self.ws = None
 
-    def connect(self):
-        self._get_token()
-        self.callcontrol = CtidNg(self.host, token=self.token, prefix='api/ctid-ng', port=self.port, verify_certificate=False)
-        self.confd = Confd(self.host, token=self.token, prefix='api/confd', port=self.port, verify_certificate=False)
-        self._message_worker()
-        self._websocket_worker()
+        self._callbacksHandler = CallbacksHandler()
+        self._threadpool = ThreadPoolExecutor(max_workers=10)
+        self._connect()
 
     def on(self, event, callback):
-        self.callbacksHandler.on(event, callback)
+        self._callbacksHandler.on(event, callback)
 
     def hangup(self, call_id):
         self.callcontrol.applications.hangup_call(self.application_uuid, call_id)
@@ -85,80 +82,29 @@ class Wazo:
         }
         return self.callcontrol.applications.make_call_to_node(self.application_uuid, node['uuid'], call)
 
-    def _message_worker(self):
-        t = Thread(target=self.callbacksHandler.run)
-        t.daemon = True
-        t.start()
+    def _get_config(self, config_file):
+        with open(config_file) as config:
+            data = yaml.load(config, Loader=yaml.SafeLoader)
+        return data if data else {}
 
-    def _websocket_worker(self):
-        t = websocket_worker(self.host, self.token, self.events)
-        t.daemon = True
-        t.start()
+    def _connect(self):
+        print('Connection...')
+        self._get_token()
+        self.callcontrol = CtidNg(self.host, token=self.token, prefix='api/ctid-ng', port=self.port, verify_certificate=False)
+        self.ws = Websocketd(self.host, token=self.token, verify_certificate=False)
+
+        self._threadpool.submit(self._callbacksHandler.run)
+        self._threadpool.submit(self._ws, self.events)
+
+        print('Connected...')
+
+    def _ws(self, events):
+        for event in events:
+            m = Message(event)
+            self.ws.on(event, m.message)
+        self.ws.run()
 
     def _get_token(self):
         auth = Auth(self.host, username=self.username, password=self.password, prefix='api/auth', port=self.port, verify_certificate=False)
         token_data = auth.token.new(self.backend, expiration=self.expiration)
         self.token = token_data['token']
-        self.user_uuid = token_data['xivo_user_uuid']
-
-
-class websocket_worker(Thread):
-    def __init__(self, host, token, events):
-        Thread.__init__(self)
-        self.host = host
-        self.token = token
-        self.events = events
-        self.started = False
-        self.ws = None
-
-    def subscribe(self, event_name):
-        self.ws.send(json.dumps({
-            'op': 'subscribe',
-            'data': {
-                'event_name': event_name
-            }
-        }))
-
-    def _start(self):
-        msg = {'op': 'start'}
-        self.ws.send(json.dumps(msg))
-
-    def init(self, msg):
-        if msg.get('op') == 'init':
-            for event in self.events:
-                self.subscribe(event)
-            self._start()
-
-        if msg.get('op') == 'start':
-            self.started = True
-
-    def on_message(self, message):
-        msg = json.loads(message)
-
-        if not self.started:
-            self.init(msg)
-        else:
-            message_queue.put(msg)
-
-    def on_error(self, error):
-        print "### error {} ###".format(error)
-
-    def on_close(self):
-        print "### closed ###"
-
-    def on_open(self):
-        print "### open ###"
-
-    def run(self):
-        websocket.enableTrace(False)
-        try:
-            self.ws = websocket.WebSocketApp("wss://{}/api/websocketd/".format(self.host),
-                                        header=["X-Auth-Token: {}".format(self.token)],
-                                        on_message = self.on_message,
-                                        on_open = self.on_open,
-                                        on_error = self.on_error,
-                                        on_close = self.on_close)
-            self.ws.on_open = self.on_open
-            self.ws.run_forever(sslopt={"cert_reqs": False})
-        except Exception as e:
-            print 'connection error to wazo', e
