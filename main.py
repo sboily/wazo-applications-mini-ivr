@@ -5,13 +5,13 @@ from wazo import Wazo
 
 
 def dtmf(data):
-    print("User press: ", data.get('dtmf'))
+    dtmf = data.get('dtmf')
+    print("User press: ", dtmf)
+
     playback = {'uri': 'sound:tt-weasels'}
-    if data.get('dtmf') == '1':
-        print('Playback file', playback)
+    if dtmf == '1':
         wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call_id'], playback)
-    elif data.get('dtmf') == '2':
-        print('Playback file', playback)
+    if dtmf == '2':
         wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call_id'], playback)
 
 def call_entered(data):
