@@ -12,10 +12,10 @@ def dtmf(data):
     print("User press: ", data.get('dtmf'))
     if data.get('dtmf') == '1':
         print('Playback file', playback)
-        wazo.playback(data['call_id'], playback)
+        wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call_id'], playback)
     elif data.get('dtmf') == '2':
         print('Playback file', playback)
-        wazo.playback(data['call_id'], playback)
+        wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call_id'], playback)
 
 def call_entered(data):
     print("Call entered")
