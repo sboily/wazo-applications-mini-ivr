@@ -3,7 +3,7 @@
 
 import logging
 import yaml
-from queue import Queue
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from xivo_auth_client import Client as Auth
@@ -11,40 +11,9 @@ from xivo_ctid_ng_client import Client as CtidNg
 from wazo_websocketd_client import Client as Websocketd
 
 
-message_queue = Queue()
-
-
-class Message:
-    def __init__(self, name):
-        self.name = name
-
-    def message(self, data):
-        message_queue.put({'name': self.name, 'data': data})
-
-
-class CallbacksHandler:
-    def __init__(self):
-        self.callbacks = dict()
-
-    def on(self, event, callback):
-        self.callbacks[event] = callback
-
-    def triggerCallback(self, event, data):
-        if self.callbacks.get(event):
-            self.callbacks[event](data)
-
-    def on_message(self, msg):
-        self.triggerCallback(msg['name'], msg['data'])
-
-    def run(self):
-        while True:
-            self.on_message(message_queue.get())
-
-
 class Wazo:
-    def __init__(self, config_file, events):
+    def __init__(self, config_file):
         config = self._get_config(config_file)
-        self.events = events
         self.host = config['wazo']['host']
         self.username = config['wazo']['username']
         self.password = config['wazo']['password']
@@ -55,13 +24,12 @@ class Wazo:
         self.token = None
         self.call_control = None
         self.ws = None
+        self._callbacks = {}
 
-        self._callbacksHandler = CallbacksHandler()
         self._threadpool = ThreadPoolExecutor(max_workers=10)
-        self._connect()
 
     def on(self, event, callback):
-        self._callbacksHandler.on(event, callback)
+        self._callbacks[event] = callback
 
     def hangup(self, call_id):
         self.callcontrol.applications.hangup_call(self.application_uuid, call_id)
@@ -82,6 +50,9 @@ class Wazo:
         }
         return self.callcontrol.applications.make_call_to_node(self.application_uuid, node['uuid'], call)
 
+    def run(self):
+        self._connect()
+
     def _get_config(self, config_file):
         with open(config_file) as config:
             data = yaml.load(config, Loader=yaml.SafeLoader)
@@ -90,18 +61,16 @@ class Wazo:
     def _connect(self):
         print('Connection...')
         self._get_token()
+
         self.callcontrol = CtidNg(self.host, token=self.token, prefix='api/ctid-ng', port=self.port, verify_certificate=False)
         self.ws = Websocketd(self.host, token=self.token, verify_certificate=False)
-
-        self._threadpool.submit(self._callbacksHandler.run)
-        self._threadpool.submit(self._ws, self.events)
+        self._threadpool.submit(self._ws, self._callbacks)
 
         print('Connected...')
 
     def _ws(self, events):
         for event in events:
-            m = Message(event)
-            self.ws.on(event, m.message)
+            self.ws.on(event, events[event])
         self.ws.run()
 
     def _get_token(self):
