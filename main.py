@@ -3,13 +3,10 @@
 
 from wazo import Wazo
 
-config = 'config.yml'
-playback = {
-    'uri': 'sound:tt-weasels',
-}
 
 def dtmf(data):
     print("User press: ", data.get('dtmf'))
+    playback = {'uri': 'sound:tt-weasels'}
     if data.get('dtmf') == '1':
         print('Playback file', playback)
         wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call_id'], playback)
@@ -19,25 +16,27 @@ def dtmf(data):
 
 def call_entered(data):
     print("Call entered")
-    print(data)
+    playback = {'uri': 'sound:confbridge-join'}
+    wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call']['id'], playback)
     
 def call_deleted(data):
     print("Call deleted")
-    print(data)
 
 def conference_joined(data):
     print("Conference joined")
-    print(data)
 
 def playback_created(data):
     print('Playback created')
-    print(data)
 
 def stt(data):
-    print('STT')
-    print(data)
+    print('People said: ', data['result_stt'])
+    if 'raccrocher' in data['result_stt']:
+        print('hangup call...')
+        playback = {'uri': 'sound:bye'}
+        wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call_id'], playback)
+        wazo.ctid_ng.applications.hangup_call(wazo.application_uuid, data['call_id'])
 
-wazo = Wazo(config)
+wazo = Wazo('config.yml')
 wazo.on('application_call_dtmf_received', dtmf)
 wazo.on('application_call_entered', call_entered)
 wazo.on('application_call_deleted', call_deleted)

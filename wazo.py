@@ -3,7 +3,6 @@
 
 import logging
 import yaml
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 from xivo_auth_client import Client as Auth
@@ -26,7 +25,7 @@ class Wazo:
         self.ws = None
 
         self._callbacks = {}
-        self._threadpool = ThreadPoolExecutor(max_workers=10)
+        self._threadpool = ThreadPoolExecutor(max_workers=1)
 
     def on(self, event, callback):
         self._callbacks[event] = callback
