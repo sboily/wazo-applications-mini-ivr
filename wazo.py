@@ -3,6 +3,7 @@
 
 import logging
 import yaml
+import requests
 from concurrent.futures import ThreadPoolExecutor
 
 from xivo_auth_client import Client as Auth
@@ -21,6 +22,7 @@ class Wazo:
         self.application_uuid = config['wazo']['application_uuid']
         self.expiration = 3600
         self.ctid_ng = None
+        self.third_party = None
         self.auth = None
         self.ws = None
 
@@ -44,6 +46,7 @@ class Wazo:
         token = token_data['token']
 
         self.ctid_ng = CtidNg(self.host, token=token, prefix='api/ctid-ng', port=self.port, verify_certificate=False)
+        self.third_party = ThirdParty(self.host, token=token)
         self.ws = Websocketd(self.host, token=token, verify_certificate=False)
         self._threadpool.submit(self._ws, self._callbacks)
 
@@ -57,3 +60,14 @@ class Wazo:
     def _get_token(self):
         self.auth = Auth(self.host, username=self.username, password=self.password, prefix='api/auth', port=self.port, verify_certificate=False)
         return self.auth.token.new(self.backend, expiration=self.expiration)
+
+
+class ThirdParty:
+    def __init__(self, url, token):
+        self.url = 'https://{}/api/calld/1.0/stt'.format(url)
+        self.token = token
+
+    def start(self, call_id):
+        headers = {'X-Auth-Token': self.token}
+        data = {'call_id': call_id}
+        requests.post(self.url, json=data, headers=headers)
