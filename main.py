@@ -18,6 +18,7 @@ def dtmf(data):
         playback = {'uri': 'sound:hello-world'}
         wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call_id'], playback)
     if dtmf == '*':
+        print('Activating STT')
         wazo.third_party.start(data['call_id'])
 
 def call_entered(data):
@@ -41,7 +42,7 @@ def stt(data):
     game_activated = players.get(call_id)
 
     print('People said:', data['result_stt'])
-    print('Game is activated for this player:', game_activated)
+    print('Game is activated for this player:', 'No' if not game_activated else 'Yes')
 
     if 'hangup' in data['result_stt']:
         print('hangup call...')
