@@ -9,20 +9,26 @@ players = {}
 
 def dtmf(data):
     dtmf = data.get('dtmf')
+    call_id = data['call_id']
+
     print("User press: ", dtmf)
 
     if dtmf == '1':
         playback = {'uri': 'sound:tt-weasels'}
-        wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call_id'], playback)
+        wazo.ctid_ng.applications.send_playback(wazo.application_uuid, call_id, playback)
     if dtmf == '2':
         playback = {'uri': 'sound:hello-world'}
-        wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call_id'], playback)
+        wazo.ctid_ng.applications.send_playback(wazo.application_uuid, call_id, playback)
     if dtmf == '*':
-        print('Activating STT')
-        wazo.third_party.start(data['call_id'])
+        print('Activating STT...')
+        if len(players) > 10:
+            print('Sorry the TTS is limited to 10 people')
+            return
+        players[call_id] = False
+        wazo.third_party.start(call_id)
 
 def call_entered(data):
-    print("Call entered", data["call"]["id"])
+    print("Call entered")
     playback = {'uri': 'sound:confbridge-join'}
     wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call']['id'], playback)
     
@@ -54,7 +60,8 @@ def stt(data):
         hangup_call(data)
 
     if not game_activated and 'play' in data['result_stt']:
-        if len(players) != 0:
+        play = any(players[player] for player in players)
+        if play:
             print('Sorry There is already a player')
             return
         print('Playing to yes no games...')
@@ -73,6 +80,7 @@ def hangup_call(data):
     wazo.ctid_ng.applications.hangup_call(wazo.application_uuid, data['call_id'])
 
 def call_other_player(call_id):
+    print('Calling the other participant...')
     node = wazo.ctid_ng.applications.create_node(wazo.application_uuid, [call_id])
     other_player = {
         'exten': str(wazo.config['mobile']),
