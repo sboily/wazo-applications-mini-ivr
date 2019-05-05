@@ -13,13 +13,13 @@ from wazo_websocketd_client import Client as Websocketd
 
 class Wazo:
     def __init__(self, config_file):
-        config = self._get_config(config_file)
-        self.host = config['wazo']['host']
-        self.username = config['wazo']['username']
-        self.password = config['wazo']['password']
-        self.port = config['wazo']['port']
-        self.backend = config['wazo']['backend']
-        self.application_uuid = config['wazo']['application_uuid']
+        self.config = self._get_config(config_file)
+        self.host = self.config['wazo']['host']
+        self.username = self.config['wazo']['username']
+        self.password = self.config['wazo']['password']
+        self.port = self.config['wazo']['port']
+        self.backend = self.config['wazo']['backend']
+        self.application_uuid = self.config['wazo']['application_uuid']
         self.expiration = 3600
         self.ctid_ng = None
         self.third_party = None

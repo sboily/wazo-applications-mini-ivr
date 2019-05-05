@@ -27,6 +27,11 @@ def call_entered(data):
     wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call']['id'], playback)
     
 def call_deleted(data):
+    global players
+
+    call_id = data['call']['id']
+    if players.get(call_id):
+        players.pop(call_id)
     print("Call deleted")
 
 def conference_joined(data):
@@ -47,13 +52,18 @@ def stt(data):
     if 'hangup' in data['result_stt']:
         print('hangup call...')
         hangup_call(data)
+
     if not game_activated and 'play' in data['result_stt']:
+        if len(players) != 0:
+            print('Sorry There is already a player')
+            return
         print('Playing to yes no games...')
         players[call_id] = True
         playback = {'uri': 'sound:hello-world'}
         wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call_id'], playback)
+        call_other_player(data['call_id'])
+
     if game_activated and ('yes' in data['result_stt'] or 'no' in data['result_stt']):
-        players.pop(call_id)
         print('Sorry you loose...')
         hangup_call(data)
 
@@ -61,6 +71,14 @@ def hangup_call(data):
     playback = {'uri': 'sound:bye'}
     wazo.ctid_ng.applications.send_playback(wazo.application_uuid, data['call_id'], playback)
     wazo.ctid_ng.applications.hangup_call(wazo.application_uuid, data['call_id'])
+
+def call_other_player(call_id):
+    node = wazo.ctid_ng.applications.create_node(wazo.application_uuid, [call_id])
+    other_player = {
+        'exten': str(wazo.config['mobile']),
+        'context': wazo.config['context']
+    }
+    wazo.ctid_ng.applications.make_call_to_node(wazo.application_uuid, node['uuid'], other_player)
 
 wazo = Wazo('config.yml')
 wazo.on('application_call_dtmf_received', dtmf)
